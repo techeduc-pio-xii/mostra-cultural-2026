@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mostra Cultural 2026 | Colégio Franciscano Pio XII</title>
+  <link rel="icon" href="assets/logo.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="header">
+      <img src="assets/logo.png" alt="Colégio Franciscano Pio XII">
+      <div class="header-title">Mostra Cultural 2026</div>
+    </div>
+    <nav class="nav" id="navTabs" aria-label="Navegação principal"></nav>
+  </header>
+
+  <main>
+    <section class="filters" id="filtersPanel">
+      <div class="field search-field">
+        <label for="search">Buscar</label>
+        <div class="searchwrap"><input id="search" placeholder="Projeto, professor, disciplina, espaço..." autocomplete="off"></div>
+      </div>
+      <div class="field"><label for="segmento">Segmento</label><select id="segmento"><option value="">Todos</option></select></div>
+      <div class="field"><label for="serie">Série</label><select id="serie"><option value="">Todas</option></select></div>
+      <div class="field"><label for="disciplina">Disciplina</label><select id="disciplina"><option value="">Todas</option></select></div>
+      
+      <button class="clear" id="clear" type="button">Limpar filtros</button>
+    </section>
+
+    <section class="content">
+      <div class="content-head">
+        <div>
+          <h2 id="sectionTitle">Projetos cadastrados</h2>
+          <div class="section-subtitle" id="sectionSubtitle">Fonte: Google Sheets</div>
+        </div>
+        <div class="head-actions">
+          <span class="count" id="countN">0</span>
+          <select id="sectorSubfilter" class="sector-subfilter hidden" aria-label="Filtro da seção"></select>
+          <button class="action-btn" id="sectionChecklistBtn" hidden type="button">Gerar checklist geral</button>
+          <button class="action-btn" id="identificacaoPdfBtn" hidden type="button">Gerar PDF</button>
+          <button class="audit-btn" id="auditBtn" type="button">Modo auditoria</button>
+        </div>
+      </div>
+
+      <div class="section-content active" id="identificacao">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Projeto</th><th>Segmento</th><th>Série</th><th>Disciplina</th><th>Professor(a)</th><th>Tema</th><th></th></tr></thead>
+            <tbody id="projectRows"></tbody>
+          </table>
+        </div>
+        <div class="pagination"><span id="showing">—</span><div class="pages" id="pages"></div></div>
+      </div>
+
+      <div class="section-content" id="projeto"><div class="cardlist" id="projetoCards"></div></div>
+      <div class="section-content" id="te"><div class="cardlist" id="teCards"></div></div>
+      <div class="section-content" id="dispositivos"><div class="cardlist" id="dispositivosCards"></div></div>
+      <div class="section-content" id="fabricacao"><div class="cardlist" id="fabricacaoCards"></div></div>
+      <div class="section-content" id="ti"><div class="cardlist" id="tiCards"></div></div>
+      <div class="section-content" id="av"><div class="cardlist" id="avCards"></div></div>
+      <div class="section-content" id="manutencao"><div class="cardlist" id="manutencaoCards"></div></div>
+      <div class="section-content" id="comunicacao"><div class="cardlist" id="comunicacaoCards"></div></div>
+      <div class="section-content" id="gestao"><div class="management" id="gestaoContent"></div></div>
+    </section>
+  </main>
+
+  <div class="site-status" id="siteStatus">● Modo demonstração</div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <div id="lightbox" class="lightbox" aria-hidden="true">
+    <button class="lightbox-close" id="lightboxClose" type="button" aria-label="Fechar">×</button>
+    <button class="lightbox-prev" id="lightboxPrev" type="button" aria-label="Anterior">‹</button>
+    <img id="lightboxImg" alt="Imagem ampliada">
+    <button class="lightbox-next" id="lightboxNext" type="button" aria-label="Próxima">›</button>
+    <button class="lightbox-print" id="lightboxPrint" type="button">Imprimir A4</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
