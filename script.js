@@ -12,8 +12,8 @@ const CONFIG = {
 };
 
 const NAV = [
-  ["identificacao", "Identificação"],
-  ["projeto", "Sobre o Projeto"],
+  ["identificacao", "Projetos Cadastrados"],
+  ["projeto", "Auditoria CP"],
   ["te", "Apoio TE"],
   ["dispositivos", "Dispositivos e Periféricos"],
   ["fabricacao", "Fabricação Digital"],
@@ -21,7 +21,9 @@ const NAV = [
   ["av", "Audiovisual"],
   ["manutencao", "Manutenção"],
   ["comunicacao", "Comunicação"],
-  ["gestao", "Gestão"]
+  ["espacos", "✓ Espaços"],
+  ["recursos", "✓ Recursos"],
+  ["expositores", "✓ Expositores"]
 ];
 
 const SECTOR_LABELS = {
@@ -161,6 +163,7 @@ function normalizeProject(raw) {
     sectors: Array.isArray(p.sectors) ? p.sectors : [],
     checklist: p.checklist || {},
     audit: p.audit || {},
+    spaceAudit: p.spaceAudit || {},
     files: Array.isArray(p.files) ? p.files : []
   };
 }
@@ -660,7 +663,7 @@ function setSection(section) {
 }
 
 function updateHeader() {
-  const titles = { identificacao: "Projetos cadastrados", projeto: "Sobre o Projeto", gestao: "Gestão", ...SECTOR_LABELS };
+  const titles = { identificacao: "Projetos Cadastrados", projeto: "Auditoria CP", espacos: "✓ Espaços", recursos: "✓ Recursos", expositores: "✓ Expositores", ...SECTOR_LABELS };
   document.getElementById("sectionTitle").textContent = titles[state.current] || state.current;
   document.getElementById("sectionSubtitle").textContent = CONFIG.API_URL ? "Dados atualizados a partir do Google Sheets" : "Modo de demonstração com respostas reais de teste";
   document.getElementById("identificacaoPdfBtn").hidden = state.current !== "identificacao";
@@ -1047,7 +1050,7 @@ const pageArr = arr;
             </div>
 
             <div class="detail-item">
-              <b>Disciplina</b>
+              <b>Componente Curricular</b>
               ${esc(p.disciplina)}
             </div>
 
@@ -1335,6 +1338,690 @@ function structureRequesters(arr, structureId) {
     .filter(Boolean);
 }
 
+
+
+function resourceRows(arr) {
+  const inv = state.inventory || [];
+  return inv.map(item => {
+    const requested = arr.reduce((sum, p) => {
+      return sum + numberVal(p[item.sourceGroup]?.[item.sourceKey]);
+    }, 0);
+    const available = item.available == null ? null : Number(item.available);
+    const deficit = available != null && requested > available;
+    const requesters = arr
+      .map(p => {
+        const quantity = numberVal(p[item.sourceGroup]?.[item.sourceKey]);
+        if (quantity <= 0) return null;
+        return { projeto: p.titulo || "Sem título", serie: p.serie || "—", quantidade: quantity };
+      })
+      .filter(Boolean);
+    return { ...item, requested, available, deficit, requesters };
+  }).filter(row => row.requested > 0);
+}
+
+
+function spaceText(value) {
+  return String(value == null ? "" : value)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitSpaceParts(value) {
+  return String(value == null ? "" : value)
+    .split(/[\n;]+/)
+    .map(spaceText)
+    .filter(Boolean);
+}
+
+function requestedSpaceEntries(project) {
+  const spaceParts = splitSpaceParts(project.space || project.espacos || "");
+  const salaParts = splitSpaceParts(project.sala || "");
+
+  if (!spaceParts.length && !salaParts.length) {
+    return [{ raw: "", sourceIndex: 0 }];
+  }
+
+  if (spaceParts.length === 1 && salaParts.length === 1) {
+    return [{
+      raw: [spaceParts[0], salaParts[0]].filter(Boolean).join(" • "),
+      sourceIndex: 0
+    }];
+  }
+
+  return [...spaceParts, ...salaParts].map((raw, index) => ({
+    raw,
+    sourceIndex: index
+  }));
+}
+
+function normalizeSpaceKey(value) {
+  return spaceText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[“”"'`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isUnknownSpace(value) {
+  const key = normalizeSpaceKey(value);
+  if (!key) return true;
+  return [
+    /a definir/,
+    /a confirmar/,
+    /a combinar/,
+    /dependencias? do colegio/,
+    /dependencias? da escola/,
+    /salas? de aula/,
+    /trabalhos? espalhados? pela escola/,
+    /espalhados? pela escola/,
+    /pela escola/,
+    /em diversos locais/,
+    /diversos locais/,
+    /sem local/,
+    /^na escola$/,
+    /^escola$/
+  ].some(rx => rx.test(key));
+}
+
+function spaceNormalization(raw) {
+  const text = spaceText(raw);
+  const key = normalizeSpaceKey(text);
+
+  if (isUnknownSpace(text)) {
+    return {
+      canonical: "Local não definido",
+      familyKey: "__UNKNOWN__",
+      raw: text
+    };
+  }
+
+  if (/high school|sala do high school|sala high school/.test(key)) {
+    return {
+      canonical: "Sala High School – antiga recepção",
+      familyKey: "high_school",
+      raw: text
+    };
+  }
+
+  if (/pastoral/.test(key)) {
+    return {
+      canonical: "Sala da Pastoral",
+      familyKey: "pastoral",
+      raw: text
+    };
+  }
+
+  if (
+    /salao|sal[aã]o/.test(key) &&
+    /1.?ano/.test(key) &&
+    /predio novo|pr[eé]dio novo|pr[eé]dio do 1.?ano/.test(key)
+  ) {
+    return {
+      canonical: "Salão do 1º ano – prédio novo",
+      familyKey: "salao_1ano_predio_novo",
+      raw: text
+    };
+  }
+
+  if (/sala de art/.test(key)) {
+    return {
+      canonical: "Sala de Artes",
+      familyKey: "sala_artes",
+      raw: text
+    };
+  }
+
+  if (/patio cinza/.test(key)) {
+    return {
+      canonical: "Pátio Cinza",
+      familyKey: "patio_cinza",
+      raw: text
+    };
+  }
+
+  if (/patio embaixo.*biblioteca|embaixo.*biblioteca/.test(key)) {
+    return {
+      canonical: "Pátio embaixo da Biblioteca",
+      familyKey: "patio_biblioteca",
+      raw: text
+    };
+  }
+
+  if (/auditorio/.test(key)) {
+    return {
+      canonical: "Auditório",
+      familyKey: "auditorio",
+      raw: text
+    };
+  }
+
+  if (/quadra/.test(key)) {
+    return {
+      canonical: "Quadra",
+      familyKey: "quadra",
+      raw: text
+    };
+  }
+
+  if (/biblioteca/.test(key)) {
+    return {
+      canonical: "Biblioteca",
+      familyKey: "biblioteca",
+      raw: text
+    };
+  }
+
+  if (/laboratorio|laborat[oó]rio/.test(key)) {
+    return {
+      canonical: "Laboratório",
+      familyKey: "laboratorio",
+      raw: text
+    };
+  }
+
+  if (/refeitorio|refeit[oó]rio/.test(key)) {
+    return {
+      canonical: "Refeitório",
+      familyKey: "refeitorio",
+      raw: text
+    };
+  }
+
+  if (/teatro/.test(key)) {
+    return {
+      canonical: "Teatro",
+      familyKey: "teatro",
+      raw: text
+    };
+  }
+
+  return {
+    canonical: text,
+    familyKey: key || "__UNKNOWN__",
+    raw: text
+  };
+}
+
+function spaceSubspaceKey(canonical, variation) {
+  const c = normalizeSpaceKey(canonical);
+  const v = normalizeSpaceKey(variation);
+  if (!v) return "";
+
+  const knownFamilies = [
+    ["patio cinza", ["parede da cantina", "area do palco", "palco", "entrada do efai"]],
+    ["patio embaixo da biblioteca", ["lado esquerdo", "proximo as janelas da recepcao", "em frente a sala de artes"]]
+  ];
+
+  for (const [family, markers] of knownFamilies) {
+    if (c.includes(family)) {
+      for (const marker of markers) {
+        if (v.includes(marker)) return marker;
+      }
+    }
+  }
+
+  return "";
+}
+
+function getSpaceAuditEntry(project, sourceIndex, raw) {
+  const stored = project.spaceAudit && project.spaceAudit[String(sourceIndex)]
+    ? project.spaceAudit[String(sourceIndex)]
+    : {};
+  const normalized = spaceNormalization(raw);
+  const canonical = stored.local || normalized.canonical;
+  const variation = stored.variation != null && String(stored.variation) !== ""
+    ? String(stored.variation)
+    : raw;
+  return {
+    sourceIndex,
+    raw,
+    local: canonical,
+    variation,
+    familyKey: spaceNormalization(canonical).familyKey,
+    subspaceKey: spaceSubspaceKey(canonical, variation),
+    project
+  };
+}
+
+function spaceRecords(arr) {
+  const records = [];
+
+  arr.forEach(project => {
+    requestedSpaceEntries(project).forEach(entry => {
+      if (!entry.raw) {
+        records.push(getSpaceAuditEntry(project, entry.sourceIndex, ""));
+        return;
+      }
+      records.push(getSpaceAuditEntry(project, entry.sourceIndex, entry.raw));
+    });
+  });
+
+  const groups = new Map();
+  records.forEach(record => {
+    const groupKey = normalizeSpaceKey(record.local) || "__UNKNOWN__";
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push(record);
+  });
+
+  records.forEach(record => {
+    const key = normalizeSpaceKey(record.local) || "__UNKNOWN__";
+    const group = groups.get(key) || [];
+    const uniqueProjects = new Set(group.map(x => x.project.id));
+    const uniqueSpecific = new Set(
+      group.map(x => `${x.familyKey}::${x.subspaceKey || "__same__"}`)
+    );
+    const unknown = record.local === "Local não definido" || record.familyKey === "__UNKNOWN__";
+
+    let status = "Sem conflito";
+    let statusClass = "green";
+
+    if (unknown) {
+      status = "Não identificado";
+      statusClass = "yellow";
+    } else if (uniqueProjects.size <= 1) {
+      status = "Sem conflito";
+      statusClass = "green";
+    } else if (uniqueSpecific.size > 1 && uniqueSpecific.size < group.length + 1) {
+      status = "Possível conflito";
+      statusClass = "orange";
+    } else {
+      status = "Conflito";
+      statusClass = "red";
+    }
+
+    record.status = status;
+    record.statusClass = statusClass;
+    record.group = group;
+  });
+
+  return records;
+}
+
+function spaceSummaryCards(records) {
+  const map = new Map();
+  records.forEach(record => {
+    const key = normalizeSpaceKey(record.local) || "__UNKNOWN__";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(record);
+  });
+
+  return [...map.values()].map(group => {
+    const projects = new Set(group.map(x => x.project.id));
+    const statuses = new Set(group.map(x => x.statusClass));
+    let statusClass = "green";
+    if (statuses.has("red")) statusClass = "red";
+    else if (statuses.has("orange")) statusClass = "orange";
+    else if (statuses.has("yellow")) statusClass = "yellow";
+
+    const label = {
+      red: "Conflito",
+      orange: "Possível conflito",
+      yellow: "Não identificado",
+      green: "Sem conflito"
+    }[statusClass];
+
+    return {
+      local: group[0].local,
+      count: projects.size,
+      statusClass,
+      status: label,
+      records: group
+    };
+  }).sort((a, b) => {
+    const rank = { red: 4, orange: 3, yellow: 2, green: 1 };
+    return (rank[b.statusClass] - rank[a.statusClass]) || (b.count - a.count) || a.local.localeCompare(b.local, "pt-BR");
+  });
+}
+
+function sameSpaceText(a, b) {
+  return normalizeSpaceKey(a) === normalizeSpaceKey(b);
+}
+
+function exhibitorRows(arr) {
+  return (state.structureCatalog || []).map(item => {
+    const id = String(item.id).padStart(2, "0");
+    const requested = arr.reduce((sum, p) => sum + numberVal(p.structures?.[id]), 0);
+    const available = item.available == null ? null : Number(item.available);
+    return {
+      ...item,
+      requested,
+      available,
+      deficit: available != null && requested > available,
+      requesters: structureRequesters(arr, item.id)
+    };
+  }).filter(row => row.requested > 0);
+}
+
+function renderRecursos(arr) {
+  const rows = resourceRows(arr);
+  const inv = state.inventory || [];
+  const equipmentHtml = inv.map(item => {
+    const requested = arr.reduce((sum, p) => {
+      return sum + numberVal(p[item.sourceGroup]?.[item.sourceKey]);
+    }, 0);
+    const available = item.available == null ? null : Number(item.available);
+    const remaining = available == null ? null : available - requested;
+    const icon = item.group === "Audiovisual" ? "◉" : item.group === "Manutenção" ? "⌁" : "▣";
+    return `
+      <div class="inventory-card">
+        <div class="inventory-icon">${icon}</div>
+        <div class="inventory-main">
+          <b>${esc(item.name)}</b>
+          <div class="inventory-meta">${esc(item.group)}</div>
+        </div>
+        <div class="inventory-numbers">
+          <div><strong>${requested}</strong><span>solicitado(s)</span></div>
+          <div class="inventory-sep">/</div>
+          <div><strong>${available == null ? "—" : available}</strong><span>${available == null ? "disponível não informado" : "disponível(is)"}</span></div>
+        </div>
+        ${remaining != null ? `<div class="inventory-balance ${remaining < 0 ? "over" : ""}"><b>${remaining}</b><span>${remaining < 0 ? "déficit" : "saldo"}</span></div>` : ""}
+      </div>`;
+  }).join("");
+
+  const nonCountable = [
+    ["Adaptadores e cabos", arr.filter(p => !isEmptyDemand(p.ti?.adaptadoresCabos)).length],
+    ["Outros dispositivos", arr.filter(p => !isEmptyDemand(p.dispositivos?.outros)).length]
+  ];
+
+  document.getElementById("recursosContent").innerHTML = `
+    <div class="management">
+      <div class="management-intro"><div><b>Recursos solicitados</b><span>Comparação entre solicitações dos projetos e disponibilidade atual.</span></div><div class="management-updated">${arr.length} projeto(s) no recorte atual</div></div>
+
+      <section class="management-section">
+        <div class="management-section-head">
+          <div><h3>Equipamentos e recursos</h3><p>Solicitado / disponível. A disponibilidade vem da aba ESTOQUE, não do Forms.</p></div>
+        </div>
+        <div class="inventory-grid">${equipmentHtml}</div>
+        <div class="management-note"><b>Importante:</b> quando o Forms não coleta quantidade de um recurso (por exemplo, adaptadores/cabos ou texto livre em “Outros”), o painel mostra o número de projetos solicitantes em vez de inventar uma quantidade.</div>
+        <div class="inventory-grid">
+          ${nonCountable.map(([name,count]) => `
+            <div class="inventory-card">
+              <div class="inventory-icon">≋</div>
+              <div class="inventory-main"><b>${esc(name)}</b><div class="inventory-meta">Solicitação em texto</div></div>
+              <div class="inventory-numbers"><div><strong>${count}</strong><span>projeto(s)</span></div></div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+
+      <section class="management-section">
+        <div class="table-wrap">
+          <table class="inventory-table">
+            <thead><tr><th>Recurso</th><th>Grupo</th><th>Solicitado</th><th>Disponível</th><th>Status</th></tr></thead>
+            <tbody>
+              ${rows.length ? rows.map(row => `
+                <tr>
+                  <td><b>${esc(row.name)}</b></td>
+                  <td>${esc(row.group)}</td>
+                  <td>${row.requested}</td>
+                  <td>${row.available == null ? "—" : row.available}</td>
+                  <td class="${row.deficit ? "deficit" : ""}">${row.deficit ? "Insuficiente" : "Atende"}</td>
+                </tr>
+              `).join("") : `<tr><td colspan="5"><div class="media-empty">Nenhum recurso quantificável foi solicitado no recorte atual.</div></td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      ${rows.filter(r => r.requesters.length).map(row => `
+        <section class="management-section">
+          <div class="management-section-head"><div><h3>${esc(row.name)}</h3><p>Projetos solicitantes.</p></div></div>
+          <div class="management-projects">
+            ${row.requesters.map(item => `<div class="management-project"><div><b>${esc(item.projeto)}</b><span>${esc(item.serie)}</span></div><div class="management-space">${item.quantidade} unidade(s)</div></div>`).join("")}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderEspacos(arr) {
+  const records = spaceRecords(arr);
+  const cards = spaceSummaryCards(records);
+
+  const cardHtml = cards.length
+    ? cards.map(card => `
+        <div class="space-status-card ${card.statusClass}">
+          <div class="space-status-card-head">
+            <div class="space-status-icon ${card.statusClass}"><span></span></div>
+            <div class="space-status-card-title">${esc(card.local)}</div>
+          </div>
+          <div class="space-status-card-count">${card.count}<span> projeto(s)</span></div>
+          <div class="space-status-pill ${card.statusClass}">${esc(card.status)}</div>
+        </div>
+      `).join("")
+    : `<div class="space-empty">Nenhum espaço foi informado no recorte atual.</div>`;
+
+  const statusRank = { red: 4, orange: 3, yellow: 2, green: 1 };
+  const sortedRecords = [...records].sort((a, b) =>
+    (statusRank[b.statusClass] - statusRank[a.statusClass]) ||
+    a.local.localeCompare(b.local, "pt-BR") ||
+    String(a.project.titulo || "").localeCompare(String(b.project.titulo || ""), "pt-BR")
+  );
+
+  const tableHtml = sortedRecords.length
+    ? sortedRecords.map((record, index) => {
+        const detailId = `space-detail-${record.project.id}-${record.sourceIndex}-${index}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+        const variation = record.variation && !sameSpaceText(record.variation, record.local)
+          ? record.variation
+          : "—";
+        const audit = state.audit;
+        const storedLocal = record.local;
+        const storedVariation = variation === "—" ? record.variation : variation;
+
+        return `
+          <tr class="space-record-row ${record.statusClass}" data-space-toggle data-detail-id="${detailId}">
+            <td>${esc(record.project.serie || "—")}</td>
+            <td>${esc(record.project.titulo || "Sem título")}</td>
+            <td class="space-local-cell">
+              ${audit
+                ? `<input class="space-audit-input" data-space-local value="${esc(storedLocal)}" data-project="${esc(record.project.id)}" data-space-index="${record.sourceIndex}">`
+                : `<button type="button" class="space-local-link">${esc(record.local)}</button>`}
+            </td>
+            <td><span class="space-status-pill ${record.statusClass}">${esc(record.status)}</span></td>
+          </tr>
+          <tr class="space-detail-container" id="${detailId}">
+            <td colspan="4">
+              <div class="space-detail-panel">
+                <div class="space-detail-title">Variação encontrada no pedido</div>
+                ${audit
+                  ? `<textarea class="space-audit-variation" data-space-variation data-project="${esc(record.project.id)}" data-space-index="${record.sourceIndex}">${esc(storedVariation || "")}</textarea>
+                     <div class="space-audit-actions"><button type="button" class="save-btn space-audit-save" data-space-save data-project="${esc(record.project.id)}" data-space-index="${record.sourceIndex}">Salvar</button></div>`
+                  : `<div class="space-detail-variation">${esc(storedVariation || "—")}</div>`}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("")
+    : `<tr><td colspan="4"><div class="space-empty">Nenhuma solicitação de espaço encontrada no recorte atual.</div></td></tr>`;
+
+  document.getElementById("espacosContent").innerHTML = `
+    <div class="management">
+      <div class="management-intro">
+        <div>
+          <b>Conferência de espaços</b>
+          <span>Visão rápida de solicitações, conflitos e locais que ainda precisam de confirmação.</span>
+        </div>
+        <div class="management-updated">${arr.length} projeto(s) no recorte atual</div>
+      </div>
+
+      <section class="management-section">
+        <div class="management-section-head">
+          <div>
+            <h3>Visão rápida dos espaços</h3>
+            <p>Ordenados por criticidade: conflito, possível conflito, não identificado e sem conflito.</p>
+          </div>
+        </div>
+        <div class="space-status-card-grid">${cardHtml}</div>
+      </section>
+
+      <section class="management-section">
+        <div class="management-section-head">
+          <div>
+            <h3>Conferência por projeto</h3>
+            <p>Clique no local para conferir a forma como ele foi informado no pedido.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="inventory-table space-table">
+            <thead><tr><th>Série</th><th>Projeto</th><th>Local</th><th>Status</th></tr></thead>
+            <tbody>${tableHtml}</tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  `;
+
+  document.querySelectorAll("[data-space-toggle]").forEach(row => {
+    row.addEventListener("click", event => {
+      if (event.target.closest("input, textarea, button.space-audit-save")) return;
+      const detailRow = document.getElementById(row.dataset.detailId);
+      if (!detailRow) return;
+      const isOpen = detailRow.classList.contains("open");
+      detailRow.classList.toggle("open", !isOpen);
+      row.classList.toggle("open", !isOpen);
+    });
+  });
+
+  document.querySelectorAll("[data-space-local]").forEach(input => {
+    input.addEventListener("change", event => {
+      event.stopPropagation();
+      const p = state.projects.find(project => project.id === input.dataset.project);
+      if (!p) return;
+      p.spaceAudit = p.spaceAudit || {};
+      const idx = String(input.dataset.spaceIndex);
+      p.spaceAudit[idx] = {
+        ...(p.spaceAudit[idx] || {}),
+        local: input.value.trim()
+      };
+      render();
+    });
+    input.addEventListener("click", event => event.stopPropagation());
+  });
+
+  document.querySelectorAll("[data-space-variation]").forEach(input => {
+    input.addEventListener("change", event => {
+      event.stopPropagation();
+      const p = state.projects.find(project => project.id === input.dataset.project);
+      if (!p) return;
+      p.spaceAudit = p.spaceAudit || {};
+      const idx = String(input.dataset.spaceIndex);
+      p.spaceAudit[idx] = {
+        ...(p.spaceAudit[idx] || {}),
+        variation: input.value
+      };
+      render();
+    });
+    input.addEventListener("click", event => event.stopPropagation());
+  });
+
+  document.querySelectorAll("[data-space-save]").forEach(button => {
+    button.addEventListener("click", async event => {
+      event.stopPropagation();
+      const projectId = button.dataset.project;
+      const sourceIndex = String(button.dataset.spaceIndex);
+      const p = state.projects.find(project => project.id === projectId);
+      if (!p) return;
+      p.spaceAudit = p.spaceAudit || {};
+      const entry = p.spaceAudit[sourceIndex] || {};
+      const local = String(entry.local || "").trim();
+      const variation = entry.variation == null ? "" : String(entry.variation);
+
+      if (!CONFIG.API_URL) {
+        showToast("Alteração aplicada apenas nesta sessão de teste.");
+        render();
+        return;
+      }
+
+      try {
+        button.disabled = true;
+        button.textContent = "Salvando...";
+        await api("saveProjectEdits", {
+          projectId,
+          edits: [
+            { field: `spaceAudit.${sourceIndex}.local`, value: local },
+            { field: `spaceAudit.${sourceIndex}.variation`, value: variation }
+          ],
+          note: "Auditoria de espaço — local padronizado e variação original"
+        }, "POST");
+        showToast("Espaço atualizado");
+        await loadData(true);
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || "Não foi possível salvar a auditoria do espaço.");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Salvar";
+      }
+    });
+  });
+}
+
+function renderExpositores(arr) {
+  const rows = exhibitorRows(arr);
+  document.getElementById("expositoresContent").innerHTML = `
+    <div class="management">
+      <div class="management-intro"><div><b>Estruturas expositivas</b><span>Comparação entre estruturas solicitadas e disponibilidade do catálogo.</span></div><div class="management-updated">${arr.length} projeto(s) no recorte atual</div></div>
+      <section class="management-section">
+        <div class="table-wrap">
+          <table class="inventory-table">
+            <thead><tr><th>Estrutura</th><th>Solicitado</th><th>Disponível</th><th>Saldo</th><th>Status</th></tr></thead>
+            <tbody>
+              ${rows.length ? rows.map(row => {
+                const saldo = row.available == null ? null : row.available - row.requested;
+                const requesters = row.requesters || [];
+                const detailRows = requesters.length
+                  ? requesters.map(item => `
+                      <tr>
+                        <td>${esc(item.serie)}</td>
+                        <td>${esc(item.projeto)}</td>
+                        <td>${item.quantidade}</td>
+                      </tr>
+                    `).join("")
+                  : `<tr><td colspan="3">Nenhum projeto solicitante encontrado.</td></tr>`;
+
+                return `
+                  <tr class="structure-main-row" data-exhibitor-toggle>
+                    <td>
+                      <span class="structure-toggle-icon">›</span>
+                      <b>Item ${String(row.id).padStart(2,"0")}</b><br>${esc(row.name)}
+                    </td>
+                    <td>${row.requested}</td>
+                    <td>${row.available == null ? "—" : row.available}</td>
+                    <td class="${saldo != null && saldo < 0 ? "deficit" : ""}">${saldo == null ? "—" : saldo}</td>
+                    <td class="${row.deficit ? "deficit" : ""}">${row.deficit ? "Insuficiente" : "Atende"}</td>
+                  </tr>
+                  <tr class="structure-detail-container">
+                    <td colspan="5">
+                      <div class="structure-detail-panel">
+                        <div class="structure-detail-title">Quem solicitou</div>
+                        <table class="structure-detail-table">
+                          <thead><tr><th>Série</th><th>Projeto</th><th>Quantidade</th></tr></thead>
+                          <tbody>${detailRows}</tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>`;
+              }).join("") : `<tr><td colspan="5"><div class="media-empty">Nenhuma estrutura expositiva foi solicitada no recorte atual.</div></td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  `;
+
+  document.querySelectorAll("[data-exhibitor-toggle]").forEach(row => {
+    row.addEventListener("click", () => {
+      const detailRow = row.nextElementSibling;
+      if (!detailRow) return;
+      const isOpen = detailRow.classList.contains("open");
+      detailRow.classList.toggle("open", !isOpen);
+      row.classList.toggle("open", !isOpen);
+    });
+  });
+}
 
 function renderGestao(arr) {
   const inv = state.inventory || [];
@@ -2801,7 +3488,9 @@ function render() {
   updateHeader();
   if (state.current === "identificacao") renderIdentificacao(arr);
   else if (state.current === "projeto") renderProjectCards(arr);
-  else if (state.current === "gestao") renderGestao(arr);
+  else if (state.current === "espacos") renderEspacos(arr);
+  else if (state.current === "recursos") renderRecursos(arr);
+  else if (state.current === "expositores") renderExpositores(arr);
   else if (SECTOR_LABELS[state.current]) renderSector(arr, state.current);
   document.getElementById("auditBtn").textContent = state.audit ? "Sair da auditoria" : "Modo auditoria";
   document.getElementById("auditBtn").classList.toggle("active", state.audit);
@@ -2967,7 +3656,7 @@ function gerarChecklistGeral(sector, arr) {
             </div>
 
             <div class="info-card">
-              <div class="label">Disciplina</div>
+              <div class="label">Componente Curricular</div>
               <div class="value">
                 ${esc(p.disciplina || "—")}
               </div>
@@ -3083,7 +3772,7 @@ ${
         .subtitle {
           margin-top: 4px;
           color: #6a6265;
-          font-size: 9px;
+          font-size: 11px;
         }
 
         .total {
@@ -3131,7 +3820,7 @@ ${
 
        .project-title {
   flex: 1;
-  font-size: 22px;
+  font-size: 15px;
   line-height: 1.3;
   font-weight: 700;
 }
@@ -3142,7 +3831,7 @@ ${
           gap: 4px;
           padding: 4px 7px;
           border-radius: 999px;
-          font-size: 8px;
+          font-size: 11px;
           font-weight: 700;
           white-space: nowrap;
         }
@@ -3191,14 +3880,14 @@ ${
         .label,
 .section-title {
   color: #8c1730;
-  font-size: 22px;
+  font-size: 11px;
   font-weight: 700;
   margin-bottom: 6px;
 }
 
 .value {
   color: #222;
-  font-size: 25px;
+  font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -3221,7 +3910,7 @@ ${
   background: #faf5f6;
 
   color: #2f2b2d;
-  font-size: 15px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -3234,7 +3923,7 @@ ${
   background: #fff;
 
   color: #554d50;
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -3360,7 +4049,7 @@ function gerarPdfVisaoGeral() {
             </div>
 
             <div class="info-card">
-              <span class="label">Disciplina</span>
+              <span class="label">Componente Curricular</span>
               <span class="value">${esc(p.disciplina || "—")}</span>
             </div>
 
@@ -3718,6 +4407,7 @@ function gerarPdfVisaoGeral() {
 function setupEvents() {
   ["search","segmento","serie","disciplina"].forEach(id => document.getElementById(id).addEventListener(id === "search" ? "input" : "change", () => { state.page = 1; render(); }));
   document.getElementById("clear").addEventListener("click", () => { document.getElementById("search").value = ""; ["segmento","serie","disciplina"].forEach(id => document.getElementById(id).value = ""); state.page = 1; state.subfilter = ""; render(); });
+  document.getElementById("refreshPageBtn")?.addEventListener("click", () => window.location.reload());
   document.getElementById("sectorSubfilter").addEventListener("change", e => { state.subfilter = e.target.value; state.page = 1; render(); });
   document.getElementById("auditBtn").addEventListener("click", async () => { if (state.audit) { state.audit = false; render(); showToast("Modo auditoria encerrado"); } else await requireAdmin(); });
   document.getElementById("identificacaoPdfBtn").addEventListener("click", gerarPdfVisaoGeral);

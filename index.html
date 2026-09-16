@@ -13,18 +13,21 @@
       <img src="assets/logo.png" alt="Colégio Franciscano Pio XII">
       <div class="header-title">Mostra Cultural 2026</div>
     </div>
-    <nav class="nav" id="navTabs" aria-label="Navegação principal"></nav>
+    <div class="nav-row">
+      <nav class="nav" id="navTabs" aria-label="Navegação principal"></nav>
+      <button class="refresh-page-btn" id="refreshPageBtn" type="button" title="Recarregar página" aria-label="Atualizar página">↻ <span>Atualizar página</span></button>
+    </div>
   </header>
 
   <main>
     <section class="filters" id="filtersPanel">
       <div class="field search-field">
         <label for="search">Buscar</label>
-        <div class="searchwrap"><input id="search" placeholder="Projeto, professor, disciplina, espaço..." autocomplete="off"></div>
+        <div class="searchwrap"><input id="search" placeholder="Projeto, professor, componente curricular, espaço..." autocomplete="off"></div>
       </div>
       <div class="field"><label for="segmento">Segmento</label><select id="segmento"><option value="">Todos</option></select></div>
       <div class="field"><label for="serie">Série</label><select id="serie"><option value="">Todas</option></select></div>
-      <div class="field"><label for="disciplina">Disciplina</label><select id="disciplina"><option value="">Todas</option></select></div>
+      <div class="field"><label for="disciplina">Componente Curricular</label><select id="disciplina"><option value="">Todas</option></select></div>
       
       <button class="clear" id="clear" type="button">Limpar filtros</button>
     </section>
@@ -47,7 +50,7 @@
       <div class="section-content active" id="identificacao">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Projeto</th><th>Segmento</th><th>Série</th><th>Disciplina</th><th>Professor(a)</th><th>Tema</th><th></th></tr></thead>
+            <thead><tr><th>Projeto</th><th>Segmento</th><th>Série</th><th>Componente Curricular</th><th>Professor(a)</th><th></th></tr></thead>
             <tbody id="projectRows"></tbody>
           </table>
         </div>
@@ -62,7 +65,9 @@
       <div class="section-content" id="av"><div class="cardlist" id="avCards"></div></div>
       <div class="section-content" id="manutencao"><div class="cardlist" id="manutencaoCards"></div></div>
       <div class="section-content" id="comunicacao"><div class="cardlist" id="comunicacaoCards"></div></div>
-      <div class="section-content" id="gestao"><div class="management" id="gestaoContent"></div></div>
+      <div class="section-content" id="espacos"><div class="management" id="espacosContent"></div></div>
+      <div class="section-content" id="recursos"><div class="management" id="recursosContent"></div></div>
+      <div class="section-content" id="expositores"><div class="management" id="expositoresContent"></div></div>
     </section>
   </main>
 
