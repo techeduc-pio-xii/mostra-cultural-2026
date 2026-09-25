@@ -5,7 +5,7 @@
  */
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbwQyKE_BU1KUPJG67o4iThsCQq8uxPcf-m1lbWc3MAnIL_Q2yUAv-k0NLzdTmHm6H9cgQ/exec",
-  POLLING_MS: 600000,
+  POLLING_MS: 45000,
   PAGE_SIZE: 12,
   DEMO_MODE: false,
   SAMPLE_URL: "data/sample.json"
